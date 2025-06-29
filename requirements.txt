@@ -1,0 +1,6 @@
+torch>=1.10
+rna-fm
+biopython
+pandas
+scikit-learn
+tqdm
