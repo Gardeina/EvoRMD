@@ -126,5 +126,3 @@ If you use **EvoRMD** in your research, please cite:
 For questions or issues, please open an issue on GitHub or contact:
 
 - Bo Wang: 2300393032@email.szu.edu.cn
-- Hao Zhang: zhanghao23s@ict.ac.cn
-- Hao Xu: haxu@bwh.harvard.edu
