@@ -1,19 +1,36 @@
-# EvoRMD: Interpretable Decoding of RNA Modifications via Evolutionary-aware Language Model and Uncertainty Calibration
+# EvoRMD: Integrating Biological Context and Evolutionary RNA Language Models for Interpretable Prediction of RNA Modifications
 
-**EvoRMD** is a deep learning framework for predicting multiple types of RNA modifications from primary RNA sequences.  
-It leverages a large-scale pretrained RNA language model (*RNA-FM*), a trainable attention mechanism, and uncertainty calibration to achieve state-of-the-art performance across 11 RNA modification types.
+**EvoRMD** is a deep learning framework for multi-class prediction of RNA modifications from primary RNA sequence windows, augmented with multi-scale biological context.
+The model combines:
+RNA-FM (a large pretrained RNA language model)
+A hierarchical anatomical encoder (species → organ/tissue → cell line → subcellular localization)
+An adaptive attention pooling module and MLP classifier
+to achieve state-of-the-art performance across 11 RNA modification types while providing cell- and state-specific motif interpretations.
 
 ---
 
 ## 🚀 Key Features
 
-- Predicts **11 RNA modification types**:
-  - **Am**, **Cm**, **Um**, **Gm**, **D**, **Ψ (Y)**, **m1A**, **m5C**, **m5U**, **m6A**, **m7G**
-- Evolutionary-aware contextual embeddings from **RNA-FM**
-- Trainable attention module highlighting informative sequence positions
-- Category-specific uncertainty calibration
-- Motif discovery and interpretability analysis
-
+- **Supported RNA modification types (11)**
+  - **Am**, **Cm**, **Um**, **Gm**, **D**, **Y**, **m¹A**, **m⁵C**, **m⁵U**, **m⁶A**, **m⁷G**
+- **Evolutionary-aware sequence embeddings**
+  - 41-nt window centered at the candidate site (20 nt upstream + 20 nt downstream)
+  - Fed into **RNA-FM**, using the **12th (final) transformer layer** hidden states as contextual token embeddings
+- **Biological-context encoder**
+  - Encodes **species, organ/tissue, cell line, subcellular localization** into dense vectors
+  - Fuses these context embeddings with RNA-FM token embeddings at every position to form a **biological content–aware representation**
+- **Adaptive attention pooling**
+  - Learns position-wise attention weights over the 41-nt window
+  - Produces a **fused site-level embedding** via attention-weighted pooling
+  - Enables **motif extraction** and **attention-based interpretability**
+- **Interpretability utilities**
+  - Extraction of **cell- and state-specific motifs**
+  - Comparison of motifs across cell lines (e.g., **HepG2 vs Huh7**, **HNPCs vs GSCs**)
+  - Visualization of **attention maps** and **latent-space separation** between modification types
+- **Multi-label outputs per site**
+  - For each candidate site, EvoRMD produces a **score / probability for all 11 RNA modification types simultaneously**.
+  - By applying user-defined thresholds to these scores, a site can be assigned **zero、one or multiple** modification labels, enabling true **multi-label prediction**.
+  
 ---
 
 ## 🧩 Prerequisites
@@ -22,7 +39,8 @@ It leverages a large-scale pretrained RNA language model (*RNA-FM*), a trainable
 - **CUDA**: 12.8
 - **PyTorch**: 2.3.1
 
-> **Note:** Please ensure that your CUDA and PyTorch versions match your system's GPU drivers.
+> **Note:** Please ensure your CUDA + PyTorch versions are compatible with your GPU driver.
+EvoRMD has been tested on NVIDIA RTX 3090 GPUs with 24 GB memory.
 
 ---
 
@@ -35,17 +53,11 @@ It leverages a large-scale pretrained RNA language model (*RNA-FM*), a trainable
     cd EvoRMD
     ```
 
-2. **Create and activate a Python environment**
+2. **Create and activate a environment**
 
     ```bash
-    conda create -n evormd python=3.10
+    conda env create -f environment.yml
     conda activate evormd
-    ```
-
-3. **Install dependencies**
-
-    ```bash
-    pip install -r requirements.txt
     ```
 
 ---
@@ -54,18 +66,29 @@ It leverages a large-scale pretrained RNA language model (*RNA-FM*), a trainable
 
 ### 1️⃣ Data Preparation
 
-If you need to train on a new dataset, place your dataset in the `RNAdata/` folder.
+To reproduce the main results in the paper, you can directly use the dataset provided in the GitHub Release:
 
-- Your data should consist of RNA sequences centered on the modification site, with **20 nt upstream and downstream** (total 41-nt windows).
-- Process your data using the provided preprocessing script:
+- `RNAdata/all_data.csv`
 
-    ```bash
-    python Script/preprocess_data.py
-    ```
+Make sure it is placed under the `RNAdata/` directory:
 
-> All examples below `./RNAdata/11_motif_data.csv` and `./RNAdata/11_modif_preprocessed_data.pkl`.
+```text
+RNAdata/
+  └── all_data.csv
+
+This file already contains all samples required to train EvoRMD, including:
+
+- **41-nt sequence windows** centered on candidate modification sites  
+- **Modification labels** for 11 RNA modification types  
+- **Biological context metadata:**
+  - `species`
+  - `organ` / `tissue`
+  - `cell` / `cell_line`
+  - `subcellular_location`
+
 
 ---
+
 
 ### 2️⃣ Model Training
 
@@ -73,24 +96,66 @@ Use PyTorch's distributed launcher to train:
 
     ```bash
     torchrun --nproc_per_node=<num_gpus> main.py \
-        --data ./RNAdata/11_modif_preprocessed_data.pkl \
-        --label ./RNAdata/11_label_encoder.pkl \
-        --result ./11_best_model_results.pkl \
-        --model ./Model/11_best_model.pth
+        --raw_csv ./RNAdata/11_modif_preprocessed_data.pkl \
+        --alpha 0.6 (default) \
+        --downsamplingseed 42 (default) \
+        --o ./Model/EVoRMD.pth \
+        --result ./results.pkl \
+        --num_epochs 100 (default) \
+        --seed 42 (default) \
+        --trainable 1 (default)
     ```
 
----
-### 3️⃣ Calibration
-
-The “11_best_model_results.pkl” generated by “Model Training” in the previous step can be used as input, and the uncertainty calibrated results can be obtained by calibration.py. 
 
 ## ⚙️ Arguments
 
-- `--nproc_per_node`: Number of GPUs per node.
-- `--data`: Path to the preprocessed data `.pkl` file.
-- `--label`: Path to the saved label encoder `.pkl` file.
-- `--result`: Path to the saved the results of model `.pkl` file.
-- `--model`: Path to save the best model checkpoint.
+### 🔧 Key Arguments
+
+- `--raw_csv`  
+  Path to the **original raw dataset CSV file** (before downsampling).  
+  Example: `RNAdata/all_data.csv`
+
+- `--alpha`  
+  Log-compression coefficient for **class-imbalance downsampling** (default: `0.6`).  
+  Larger values apply stronger compression to very abundant classes.
+
+- `--target_mods`  
+  List of **modification types to downsample** (default: `["m6a", "m5c"]`).  
+  Passed as a space-separated list, e.g.:  
+  `--target_mods m6a m5c`
+
+- `--min_keep`  
+  Minimum number of samples to keep **per species** after downsampling (default: `1`).
+
+- `--downsamplingseed`  
+  Random seed used **only for the downsampling step** (default: `42`),  
+  ensuring reproducible sub-sampling of abundant classes.
+
+- `--mlp_depth`  
+  Depth of the **MLP classifier head** (default: `1`).  
+  - `1` = Linear classifier  
+  - `2` = Two-layer MLP  
+  - `3` = Three-layer MLP (best-performing setting in the paper)
+
+- `--o`  
+  Path to save the **trained model checkpoint** (`.pth` file).  
+  Example: `Model/evormd_mlp3_trainable.pth`
+
+- `--result`  
+  Path to save the **training/validation/test results** (`.pkl` file),  
+  including logits, probabilities, and attention weights.  
+  Example: `Model/evormd_results.pkl`
+
+- `--seed`  
+  Global random seed for **reproducibility** (default: `42`).
+
+- `--num_epochs`  
+  Number of **training epochs** (default: `100`).
+
+- `--trainable`  
+  Whether to **fine-tune RNA-FM** or keep it frozen (default: `1`).  
+  - `0` = freeze RNA-FM (feature extractor only)  
+  - `1` = trainable RNA-FM (jointly optimized with MLP head)
 
 ---
 
