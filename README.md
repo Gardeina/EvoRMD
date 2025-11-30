@@ -35,8 +35,6 @@ This architecture achieves strong performance across **11 RNA modification types
   - Visualization of **attention maps** and **latent-space separation** between modification types
 
 > Note: EvoRMD is trained as a **multi-class** model (one label per site).  
-> If you want “multi-label” assignments during inference, you would typically need a **multi-label training objective** (sigmoid + BCE).  
-> Thresholding multi-class probabilities is **not** a true multi-label setting.
 
 ---
 
